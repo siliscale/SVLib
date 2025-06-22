@@ -56,12 +56,12 @@ module register_en_flush_sync_rstn #(
   assign dout = flush ? 0 : dout_int;
 
 
-  register_en_sync_rst #(
+  register_en_sync_rstn #(
       .WIDTH(WIDTH),
       .RESET_VAL(RESET_VAL)
   ) u_register_en_sync_rst (
       .clk (clk),
-      .rst (rstn),
+      .rstn(rstn),
       .en  (en),
       .din (din_int),
       .dout(dout_int)
