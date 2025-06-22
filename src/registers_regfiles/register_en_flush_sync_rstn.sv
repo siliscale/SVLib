@@ -37,7 +37,8 @@
 ///////////////////////////////////////////////////////////////////////////////
 
 module register_en_flush_sync_rstn #(
-    parameter integer WIDTH = 1
+    parameter integer WIDTH = 1,
+    parameter logic [WIDTH-1:0] RESET_VAL = '0
 ) (
     input logic clk,
     input logic rstn,
@@ -56,7 +57,8 @@ module register_en_flush_sync_rstn #(
 
 
   register_en_sync_rst #(
-      .WIDTH(WIDTH)
+      .WIDTH(WIDTH),
+      .RESET_VAL(RESET_VAL)
   ) u_register_en_sync_rst (
       .clk (clk),
       .rst (rstn),

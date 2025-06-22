@@ -37,7 +37,8 @@
 ///////////////////////////////////////////////////////////////////////////////
 
 module register_en_sync_rstn #(
-    parameter integer WIDTH = 1
+    parameter integer             WIDTH     = 1,
+    parameter logic   [WIDTH-1:0] RESET_VAL = '0
 ) (
     input logic clk,
     input logic rstn,
@@ -49,7 +50,7 @@ module register_en_sync_rstn #(
 
   always_ff @(posedge clk) begin
     if (~rstn) begin
-      dout <= 0;
+      dout <= RESET_VAL;
     end else if (en) begin
       dout <= din;
     end

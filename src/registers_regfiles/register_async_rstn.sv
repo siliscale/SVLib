@@ -37,7 +37,8 @@
 ///////////////////////////////////////////////////////////////////////////////
 
 module register_async_rstn #(
-    parameter integer WIDTH = 1
+    parameter integer             WIDTH     = 1,
+    parameter logic   [WIDTH-1:0] RESET_VAL = '0
 ) (
     input logic clk,
     input logic rstn,
@@ -48,7 +49,7 @@ module register_async_rstn #(
 
   always_ff @(posedge clk or negedge rstn) begin
     if (~rstn) begin
-      dout <= 0;
+      dout <= RESET_VAL;
     end else begin
       dout <= din;
     end

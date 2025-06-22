@@ -37,7 +37,8 @@
 ///////////////////////////////////////////////////////////////////////////////
 
 module register_en_async_rst #(
-    parameter integer WIDTH = 1
+    parameter integer             WIDTH     = 1,
+    parameter logic   [WIDTH-1:0] RESET_VAL = '0
 ) (
     input logic clk,
     input logic rst,
@@ -49,7 +50,7 @@ module register_en_async_rst #(
 
   always_ff @(posedge clk or posedge rst) begin
     if (rst) begin
-      dout <= 0;
+      dout <= RESET_VAL;
     end else if (en) begin
       dout <= din;
     end
