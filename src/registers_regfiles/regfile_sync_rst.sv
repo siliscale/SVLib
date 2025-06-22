@@ -36,6 +36,8 @@
 //          \/____/         
 ///////////////////////////////////////////////////////////////////////////////
 
+`timescale 1ns / 1ps
+
 module regfile_sync_rst #(
     parameter integer WIDTH    = 1,  // Width of each register
     parameter integer N_REG    = 1,  // Number of registers

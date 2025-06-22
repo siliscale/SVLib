@@ -36,6 +36,8 @@
 //          \/____/         
 ///////////////////////////////////////////////////////////////////////////////
 
+`timescale 1ns / 1ps
+
 module register_en_sync_rstn_vector #(
     parameter integer WIDTH = 1
 ) (

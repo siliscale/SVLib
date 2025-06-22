@@ -36,6 +36,8 @@
 //          \/____/         
 ///////////////////////////////////////////////////////////////////////////////
 
+`timescale 1ns / 1ps
+
 module register_en_flush_sync_rstn #(
     parameter integer WIDTH = 1,
     parameter logic [WIDTH-1:0] RESET_VAL = '0

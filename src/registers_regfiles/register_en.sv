@@ -36,6 +36,8 @@
 //          \/____/         
 ///////////////////////////////////////////////////////////////////////////////
 
+`timescale 1ns / 1ps
+
 module register_en #(
     parameter integer WIDTH = 1
 ) (
