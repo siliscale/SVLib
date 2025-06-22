@@ -1,4 +1,4 @@
-# SVLib: A synthesizable SystemVerilog Library for ASICs and FPGAs design
+# SVLib: A synthesizable SystemVerilog Library for ASIC and FPGA design
 
 ## Overview
 
