@@ -41,7 +41,7 @@ module program_counter #(
     parameter logic   [PC_WIDTH-1:0] INC_AMOUNT = 4
 ) (
     input logic                clk,
-    input logic                rst_n,
+    input logic                rstn,
     input logic [PC_WIDTH-1:0] reset_vector,
 
     /* Control Signals */
@@ -62,7 +62,7 @@ module program_counter #(
       .WIDTH(PC_WIDTH)
   ) pc_dff (
       .clk         (clk),
-      .rst_n       (rst_n),
+      .rstn        (rstn),
       .reset_vector(reset_vector[PC_WIDTH-1:0]),
       .en          (update_pc),
       .din         (pc_d[PC_WIDTH-1:0]),
@@ -72,7 +72,7 @@ module program_counter #(
   logic [PC_WIDTH-1:0] last_pc;
 
   always_ff @(posedge clk) begin
-    if (!rst_n) begin
+    if (!rstn) begin
       last_pc <= 'b0;
     end else if (!stall) begin
       last_pc <= pc_q;
