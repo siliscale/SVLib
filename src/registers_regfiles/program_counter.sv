@@ -36,6 +36,8 @@
 //          \/____/         
 ///////////////////////////////////////////////////////////////////////////////
 
+`timescale 1ns / 1ps
+
 module program_counter #(
     parameter integer                PC_WIDTH   = 32,
     parameter logic   [PC_WIDTH-1:0] INC_AMOUNT = 4
