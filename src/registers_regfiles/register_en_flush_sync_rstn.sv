@@ -21,7 +21,7 @@
 //      /:::/\:::\    \     
 //     /:::/__\:::\    \            Vendor      : Siliscale
 //     \:::\   \:::\    \           Version     : 2025.1
-//   ___\:::\   \:::\    \          Description : SVLib - Register w/ Enable & Active-High Sync Reset
+//   ___\:::\   \:::\    \          Description : SVLib - Register w/ Enable & Active-High Sync Reset & Flush
 //  /\   \:::\   \:::\    \ 
 // /::\   \:::\   \:::\____\
 // \:::\   \:::\   \::/    /
