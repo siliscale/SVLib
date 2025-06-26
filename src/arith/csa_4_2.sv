@@ -48,17 +48,27 @@ module csa_4_2 #(
     output logic [WIDTH:0] carry
 );
 
-  assign sum = {1'b0, in0 ^ in1 ^ in2 ^ in3} ^ {in3, 1'b0};  // Propagate
+  logic [WIDTH-1:0] sum_i;
+  logic [WIDTH-1:0] carry_i;
 
-  assign carry = ({1'b0, (in0 & in1)}) |  // Generate
-      ({1'b0, (in0 & in2)}) |  // Generate
-      ({1'b0, in0} & {in3, 1'b0}) |  // Generate
-      ({1'b0, in1} & {in3, 1'b0}) |  // Generate
-      ({1'b0, in2} & {in3, 1'b0}) |  // Generate
-      ({1'b0, in1 & in2});  // Generate
+  csa_3_2 #(
+      .WIDTH(WIDTH)
+  ) csa_3_2_i0 (
+      .in0  (in0),
+      .in1  (in1),
+      .in2  (in2),
+      .sum  (sum_i),
+      .carry(carry_i)
+  );
 
-
-
-
+  csa_3_2 #(
+      .WIDTH(WIDTH + 1)
+  ) csa_3_2_i1 (
+      .in0  ({1'b0, in3}),
+      .in1  ({1'b0, sum_i}),
+      .in2  ({carry_i, 1'b0}),
+      .sum  (sum),
+      .carry(carry)
+  );
 
 endmodule
