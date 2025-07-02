@@ -52,7 +52,7 @@ module booth_encoder #(
     output logic s
 );
 
-  logic s_i, e_i, p;
+  logic s_i, e_i;
 
   always_comb begin
     unique case (multiplier)
