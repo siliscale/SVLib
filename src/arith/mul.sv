@@ -37,9 +37,9 @@
 ///////////////////////////////////////////////////////////////////////////////
 
 module mul #(
-    parameter integer WIDTH = 16,
+    parameter integer WIDTH = 8,
     parameter integer CPA_ALGORITHM = 1,  // 0: RCA, 1: CLA
-    parameter integer PIPE_STAGE_0 = 1  // Enable Flop stage after first layer of CSAs
+    parameter integer PIPE_STAGE_CSA_LR1 = 1  // Enable Flop stage after first layer of CSAs
 ) (
     input logic clk,
 
@@ -63,12 +63,14 @@ module mul #(
   logic unsign_i;
 
   logic [2*WIDTH-1:0] correction_factor_0;
+  logic [2*WIDTH-1:0] correction_factor_1;
   logic [2*WIDTH-1:0] correction_factor;
   logic [2*WIDTH-1:0] sum;
 
-  assign multiplicand_ext        = {~unsign & a[WIDTH-1], a[WIDTH-1:0]};
+
+  assign multiplicand_ext        = {~unsign_i & a[WIDTH-1], a[WIDTH-1:0]};
   assign multiplicand_2x_ext     = {a[WIDTH-1:0], 1'b0};
-  assign multiplicand_neg_ext    = {~(~unsign & a[WIDTH-1]), ~a[WIDTH-1:0]};
+  assign multiplicand_neg_ext    = {~(~unsign_i & a[WIDTH-1]), ~a[WIDTH-1:0]};
   assign multiplicand_neg_2x_ext = {~a[WIDTH-1:0], 1'b1};
 
   assign multiplier_ext          = {2'b0, b[WIDTH-1:0], 1'b0};
@@ -145,23 +147,24 @@ module mul #(
               .carry(pp_carry_d[2*WIDTH-1:0])  // Slow, AND and OR are needed
           );
 
-          if (PIPE_STAGE_0) begin
-            register #(4 * WIDTH) pp_sum_dff_inst (
+          if (PIPE_STAGE_CSA_LR1) begin
+            register #(2 * WIDTH) pp_sum_dff_inst (
                 .clk (clk),
-                .din ({pp_sum_d, pp_carry_d}),
-                .dout({pp_sum[layer][lr], pp_carry[layer][lr]})
+                .din (pp_sum_d[2*WIDTH-1:0]),
+                .dout(pp_sum[layer][lr][2*WIDTH-1:0])
             );
-            register #(2 * WIDTH) correction_factor_dff_inst (
+
+            register #(2 * WIDTH) pp_carry_dff_inst (
                 .clk (clk),
-                .din (correction_factor_0),
-                .dout(correction_factor)
+                .din (pp_carry_d[2*WIDTH-1:0]),
+                .dout(pp_carry[layer][lr][2*WIDTH-1:0])
             );
           end else begin
-            assign pp_sum[layer][lr]   = pp_sum_d;
-            assign pp_carry[layer][lr] = pp_carry_d;
-            assign correction_factor    = correction_factor_0;
+            assign pp_sum[layer][lr][2*WIDTH-1:0]   = pp_sum_d[2*WIDTH-1:0];
+            assign pp_carry[layer][lr][2*WIDTH-1:0] = pp_carry_d[2*WIDTH-1:0];
           end
         end
+
       end else begin : gen_layer_1
         for (genvar lr = 0; lr < WIDTH / 2 / 4 / (2 ** layer); lr = lr + 1) begin : gen_lr
           csa_4_2 #(
@@ -186,6 +189,21 @@ module mul #(
 
   logic [2*WIDTH-1:0] pp_sum_correction;
   logic [2*WIDTH-1:0] pp_carry_correction;
+
+  generate
+    if (PIPE_STAGE_CSA_LR1) begin
+      register #(2 * WIDTH) correction_factor_dff_inst (
+          .clk (clk),
+          .din (correction_factor_0),
+          .dout(correction_factor_1)
+      );
+      assign correction_factor = correction_factor_1;
+    end else begin
+      assign correction_factor   = correction_factor_0;
+      //assign correction_factor_1 = correction_factor_0;
+    end
+  endgenerate
+
 
   csa_3_2 #(
       .WIDTH(2 * WIDTH)
