@@ -1,6 +1,6 @@
 module adder #(
     parameter integer WIDTH,
-    parameter integer ALGORITHM // 0: Ripple-Carry, 1: Carry-Look-Ahead
+    parameter integer ALGORITHM  // 0: Ripple-Carry, 1: Carry-Look-Ahead
 ) (
     input  logic [WIDTH-1:0] in0,
     input  logic [WIDTH-1:0] in1,
@@ -32,26 +32,40 @@ module adder #(
       end
       assign sum = sum_i;
     end else if (ALGORITHM == 1) begin  /* Carry-Look-Ahead Adder */
-      logic [WIDTH:0] generate_i;
-      logic [WIDTH:0] propagate_i;
-      logic [WIDTH:0] carry_i;
-      logic [WIDTH:0] sum_i;
+      localparam integer CLA_WIDTH = 4;
+      localparam integer CLA_COUNT = WIDTH / CLA_WIDTH;
 
-      for (genvar i = 0; i < WIDTH; i = i + 1) begin
-        assign generate_i[i]  = in0[i] & in1[i];  // G_i
-        assign propagate_i[i] = in0[i] ^ in1[i];  // P_i
+      logic [CLA_WIDTH-1:0] in0_i  [CLA_COUNT];
+      logic [CLA_WIDTH-1:0] in1_i  [CLA_COUNT];
+      logic [  CLA_WIDTH:0] sum_i  [CLA_COUNT];
+      logic [  CLA_WIDTH:0] carry_i[CLA_COUNT];
+
+      for (genvar i = 0; i < CLA_COUNT; i = i + 1) begin
+        assign in0_i[i] = in0[i*CLA_WIDTH+:CLA_WIDTH];
+        assign in1_i[i] = in1[i*CLA_WIDTH+:CLA_WIDTH];
       end
 
-      for (genvar i = 0; i < WIDTH; i = i + 1) begin
+      for (genvar i = 0; i < CLA_COUNT; i = i + 1) begin
         if (i == 0) begin
-          assign carry_i[i] = generate_i[i];
-          assign sum_i[i]   = propagate_i[i]; 
+          cla_4 cla_4_inst (
+              .in0 (in0_i[i]),
+              .in1 (in1_i[i]),
+              .cin (1'b0),
+              .sum (sum_i[i]),
+              .cout(carry_i[i])
+          );
         end else begin
-          assign carry_i[i] = generate_i[i] | (propagate_i[i] & carry_i[i-1]);
-          assign sum_i[i]   = propagate_i[i] ^ carry_i[i-1];
+          cla_4 cla_4_inst (
+              .in0 (in0_i[i]),
+              .in1 (in1_i[i]),
+              .cin (carry_i[i-1]),
+              .sum (sum_i[i]),
+              .cout(carry_i[i])
+          );
         end
       end
-      assign sum = sum_i;
+      assign sum[CLA_WIDTH*(i+1)-1:CLA_WIDTH*i] = sum_i[i];
+      assign sum[WIDTH] = carry_i[CLA_COUNT-1];
     end
   endgenerate
 endmodule
