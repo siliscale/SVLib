@@ -38,8 +38,11 @@
 
 module mul #(
     parameter integer WIDTH = 16,
-    parameter integer CPA_ALGORITHM = 1  // 0: RCA, 1: CLA
+    parameter integer CPA_ALGORITHM = 1,  // 0: RCA, 1: CLA
+    parameter integer PIPE_STAGE_0 = 1  // Enable Flop stage after first layer of CSAs
 ) (
+    input logic clk,
+
     input  logic [WIDTH-1:0] a,
     input  logic [WIDTH-1:0] b,
     input  logic             unsign,
@@ -59,6 +62,7 @@ module mul #(
   logic s[WIDTH/2:0];
   logic unsign_i;
 
+  logic [2*WIDTH-1:0] correction_factor_0;
   logic [2*WIDTH-1:0] correction_factor;
   logic [2*WIDTH-1:0] sum;
 
@@ -116,7 +120,7 @@ module mul #(
     end
   endgenerate
 
-  assign correction_factor = (unsign_i) ?  pp_out[WIDTH/2] | {{WIDTH+1{1'b0}}, s[WIDTH/2-1], {WIDTH-2{1'b0}}} : {{WIDTH+1{1'b0}}, s[WIDTH/2-1], {WIDTH-2{1'b0}}};
+  assign correction_factor_0 = (unsign_i) ?  pp_out[WIDTH/2] | {{WIDTH+1{1'b0}}, s[WIDTH/2-1], {WIDTH-2{1'b0}}} : {{WIDTH+1{1'b0}}, s[WIDTH/2-1], {WIDTH-2{1'b0}}};
 
   localparam NUM_LAYERS = 1 + $clog2(WIDTH / 2 / 4);
   logic [2*WIDTH-1:0] pp_sum  [NUM_LAYERS-1:0][WIDTH / 2 / 4-1:0];
@@ -127,6 +131,9 @@ module mul #(
     for (layer = 0; layer < NUM_LAYERS; layer = layer + 1) begin : gen_layer
       if (layer == 0) begin : gen_layer_0
         for (genvar lr = 0; lr < WIDTH / 2 / 4; lr = lr + 1) begin : gen_lr
+          logic [2*WIDTH-1:0] pp_sum_d;
+          logic [2*WIDTH-1:0] pp_carry_d;
+
           csa_4_2 #(
               .WIDTH(2 * WIDTH)
           ) csa_4_2_inst (
@@ -134,9 +141,26 @@ module mul #(
               .in1(pp_out[4*lr+1]),
               .in2(pp_out[4*lr+2]),
               .in3(pp_out[4*lr+3]),  // Fast input, goes only through the 3-2 compressor
-              .sum(pp_sum[layer][lr]),  // Fast, only XORs are needed
-              .carry(pp_carry[layer][lr])  // Slow, AND and OR are needed
+              .sum(pp_sum_d[2*WIDTH-1:0]),  // Fast, only XORs are needed
+              .carry(pp_carry_d[2*WIDTH-1:0])  // Slow, AND and OR are needed
           );
+
+          if (PIPE_STAGE_0) begin
+            register #(4 * WIDTH) pp_sum_dff_inst (
+                .clk (clk),
+                .din ({pp_sum_d, pp_carry_d}),
+                .dout({pp_sum[layer][lr], pp_carry[layer][lr]})
+            );
+            register #(2 * WIDTH) correction_factor_dff_inst (
+                .clk (clk),
+                .din (correction_factor_0),
+                .dout(correction_factor)
+            );
+          end else begin
+            assign pp_sum[layer][lr]   = pp_sum_d;
+            assign pp_carry[layer][lr] = pp_carry_d;
+            assign correction_factor    = correction_factor_0;
+          end
         end
       end else begin : gen_layer_1
         for (genvar lr = 0; lr < WIDTH / 2 / 4 / (2 ** layer); lr = lr + 1) begin : gen_lr
