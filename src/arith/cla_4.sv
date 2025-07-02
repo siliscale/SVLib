@@ -56,8 +56,8 @@ module cla_4 (
 
   for (genvar i = 0; i < 4; i = i + 1) begin
     if (i == 0) begin
-      assign carry_i[i] = generate_i[i];
-      assign sum_i[i]   = propagate_i[i];
+      assign carry_i[i] = generate_i[i] | (propagate_i[i] & cin);
+      assign sum_i[i]   = propagate_i[i] ^ cin;
     end else begin
       assign carry_i[i] = generate_i[i] | (propagate_i[i] & carry_i[i-1]);
       assign sum_i[i]   = propagate_i[i] ^ carry_i[i-1];

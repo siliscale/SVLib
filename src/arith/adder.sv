@@ -35,14 +35,14 @@ module adder #(
       localparam integer CLA_WIDTH = 4;
       localparam integer CLA_COUNT = WIDTH / CLA_WIDTH;
 
-      logic [CLA_WIDTH-1:0] in0_i  [CLA_COUNT];
-      logic [CLA_WIDTH-1:0] in1_i  [CLA_COUNT];
-      logic [  CLA_WIDTH:0] sum_i  [CLA_COUNT];
-      logic [  CLA_WIDTH:0] carry_i[CLA_COUNT];
+      logic [CLA_WIDTH-1:0] in0_i[CLA_COUNT];
+      logic [CLA_WIDTH-1:0] in1_i[CLA_COUNT];
+      logic [CLA_WIDTH-1:0] sum_i[CLA_COUNT];
+      logic [CLA_COUNT:0] carry_i;
 
       for (genvar i = 0; i < CLA_COUNT; i = i + 1) begin
-        assign in0_i[i] = in0[i*CLA_WIDTH+:CLA_WIDTH];
-        assign in1_i[i] = in1[i*CLA_WIDTH+:CLA_WIDTH];
+        assign in0_i[i] = in0[CLA_WIDTH*(i+1)-1:CLA_WIDTH*i];
+        assign in1_i[i] = in1[CLA_WIDTH*(i+1)-1:CLA_WIDTH*i];
       end
 
       for (genvar i = 0; i < CLA_COUNT; i = i + 1) begin
@@ -63,8 +63,8 @@ module adder #(
               .cout(carry_i[i])
           );
         end
+        assign sum[CLA_WIDTH*(i+1)-1:CLA_WIDTH*i] = sum_i[i];
       end
-      assign sum[CLA_WIDTH*(i+1)-1:CLA_WIDTH*i] = sum_i[i];
       assign sum[WIDTH] = carry_i[CLA_COUNT-1];
     end
   endgenerate

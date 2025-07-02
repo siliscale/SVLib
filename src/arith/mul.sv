@@ -129,12 +129,12 @@ module mul #(
           csa_4_2 #(
               .WIDTH(2 * WIDTH)
           ) csa_4_2_inst (
-              .in0  (pp_out[4*lr]),
-              .in1  (pp_out[4*lr+1]),
-              .in2  (pp_out[4*lr+2]),
-              .in3  (pp_out[4*lr+3]), // Fast input, goes only through the 3-2 compressor
-              .sum  (pp_sum[layer][lr]), // Fast, only XORs are needed
-              .carry(pp_carry[layer][lr]) // Slow, AND and OR are needed
+              .in0(pp_out[4*lr]),
+              .in1(pp_out[4*lr+1]),
+              .in2(pp_out[4*lr+2]),
+              .in3(pp_out[4*lr+3]),  // Fast input, goes only through the 3-2 compressor
+              .sum(pp_sum[layer][lr]),  // Fast, only XORs are needed
+              .carry(pp_carry[layer][lr])  // Slow, AND and OR are needed
           );
         end
       end else begin : gen_layer_1
@@ -142,12 +142,14 @@ module mul #(
           csa_4_2 #(
               .WIDTH(2 * WIDTH)
           ) csa_4_2_inst (
-              .in0  (pp_sum[layer-1][2*lr]),
-              .in1  ({pp_carry[layer-1][2*lr][2*WIDTH-2:0], 1'b0}),
-              .in2  (pp_sum[layer-1][2*lr+1]),
-              .in3  ({pp_carry[layer-1][2*lr+1][2*WIDTH-2:0], 1'b0}), // Fast input, goes only through the 3-2 compressor
-              .sum  (pp_sum[layer][lr]), // Fast, only XORs are needed
-              .carry(pp_carry[layer][lr]) // Slow, AND and OR are needed
+              .in0(pp_sum[layer-1][2*lr]),
+              .in1({pp_carry[layer-1][2*lr][2*WIDTH-2:0], 1'b0}),
+              .in2(pp_sum[layer-1][2*lr+1]),
+              .in3({
+                pp_carry[layer-1][2*lr+1][2*WIDTH-2:0], 1'b0
+              }),  // Fast input, goes only through the 3-2 compressor
+              .sum(pp_sum[layer][lr]),  // Fast, only XORs are needed
+              .carry(pp_carry[layer][lr])  // Slow, AND and OR are needed
           );
         end
       end
@@ -173,7 +175,7 @@ module mul #(
   /* Carry-Propagate Adder */
   adder #(
       .WIDTH    (2 * WIDTH),
-      .ALGORITHM(1)
+      .ALGORITHM(1)           /* CLA */
   ) adder_inst (
       .in0(pp_sum_correction),
       .in1({pp_carry_correction[2*WIDTH-2:0], 1'b0}),
