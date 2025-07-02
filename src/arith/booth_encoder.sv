@@ -21,7 +21,7 @@
 //      /:::/\:::\    \     
 //     /:::/__\:::\    \            Vendor      : Siliscale
 //     \:::\   \:::\    \           Version     : 2025.1
-//   ___\:::\   \:::\    \          Description : SVLib - Carry Save Adder (compressor) 4 to 2
+//   ___\:::\   \:::\    \          Description : SVLib - Booth Encoder
 //  /\   \:::\   \:::\    \ 
 // /::\   \:::\   \:::\____\
 // \:::\   \:::\   \::/    /
@@ -36,45 +36,41 @@
 //          \/____/         
 ///////////////////////////////////////////////////////////////////////////////
 
-module csa_4_2 #(
+module booth_encoder #(
     parameter integer WIDTH = 32
 ) (
-    input logic [WIDTH-1:0] in0,
-    input logic [WIDTH-1:0] in1,
-    input logic [WIDTH-1:0] in2,
-    input logic [WIDTH-1:0] in3, // Fast input, goes only through the 3-2 compressor
 
-    output logic [WIDTH-1:0] sum,
-    output logic [WIDTH-1:0] carry
+    input logic           unsign,
+    input logic [    2:0] multiplier,
+    input logic [WIDTH:0] multiplicand,
+    input logic [WIDTH:0] multiplicand_2x,
+    input logic [WIDTH:0] multiplicand_neg,
+    input logic [WIDTH:0] multiplicand_neg_2x,
+
+    output logic [WIDTH:0] pp_out,
+    output logic p,
+    output logic s
 );
 
-  logic [WIDTH-1:0] sum_i;
-  logic [WIDTH-1:0] carry_i;
+  logic s_i, e_i, p;
 
-  logic [  WIDTH:0] sum_i_ext;
-  logic [  WIDTH:0] carry_i_ext;
+  always_comb begin
+    unique case (multiplier)
+      3'b001:  pp_out = multiplicand;
+      3'b010:  pp_out = multiplicand;
+      3'b011:  pp_out = multiplicand_2x;
+      3'b100:  pp_out = multiplicand_neg_2x;
+      3'b101:  pp_out = multiplicand_neg;
+      3'b110:  pp_out = multiplicand_neg;
+      default: pp_out = {WIDTH + 1{1'b0}};
+    endcase
+  end
 
-  csa_3_2 #(
-      .WIDTH(WIDTH)
-  ) csa_3_2_i0 (
-      .in0  (in0),
-      .in1  (in1),
-      .in2  (in2),
-      .sum  (sum_i),
-      .carry(carry_i)
-  );
 
-  csa_3_2 #(
-      .WIDTH(WIDTH + 1)
-  ) csa_3_2_i1 (
-      .in0  ({1'b0, in3}),
-      .in1  ({1'b0, sum_i}),
-      .in2  ({carry_i, 1'b0}),
-      .sum  (sum_i_ext),
-      .carry(carry_i_ext)
-  );
+  assign s_i = multiplier[2] & ~(&multiplier[1:0]);
+  assign e_i = ~((s_i ^ multiplicand[WIDTH-1]) & ~(&multiplier[2:0])) | ~(|multiplier[2:0]);
 
-  assign sum   = sum_i_ext[WIDTH-1:0];
-  assign carry = carry_i_ext[WIDTH-1:0];
+  assign p   = (unsign) ? ~s_i : e_i;
+  assign s   = s_i;
 
 endmodule

@@ -47,8 +47,15 @@ module csa_3_2 #(
     output logic [WIDTH-1:0] carry
 );
 
-assign sum = in0 ^ in1 ^ in2; // Propagate
-assign carry = (in0 & in1) | (in0 & in2) | (in1 & in2); // Generate
-
+  genvar i;
+  for (i = 0; i < WIDTH; i = i + 1) begin
+    fa fa_inst (
+        .a   (in0[i]),
+        .b   (in1[i]),
+        .cin (in2[i]),
+        .sum (sum[i]),
+        .cout(carry[i])
+    );
+  end
 
 endmodule
