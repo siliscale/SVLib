@@ -37,7 +37,8 @@
 ///////////////////////////////////////////////////////////////////////////////
 
 module mul #(
-    parameter integer WIDTH = 16
+    parameter integer WIDTH = 16,
+    parameter integer CPA_ALGORITHM = 1  // 0: RCA, 1: CLA
 ) (
     input  logic [WIDTH-1:0] a,
     input  logic [WIDTH-1:0] b,
@@ -175,7 +176,7 @@ module mul #(
   /* Carry-Propagate Adder */
   adder #(
       .WIDTH    (2 * WIDTH),
-      .ALGORITHM(1)           /* CLA */
+      .ALGORITHM(CPA_ALGORITHM)
   ) adder_inst (
       .in0(pp_sum_correction),
       .in1({pp_carry_correction[2*WIDTH-2:0], 1'b0}),
