@@ -39,6 +39,7 @@
 module mul #(
     parameter integer WIDTH = 8,
     parameter integer CPA_ALGORITHM = 1,  // 0: RCA, 1: CLA
+    parameter integer PIPE_STAGE_AFTER_BOOTH = 1,  // Enable Flop stage after Booth encoder
     parameter integer PIPE_STAGE_CSA_LR1 = 1  // Enable Flop stage after first layer of CSAs
 ) (
     input logic clk,
@@ -58,15 +59,14 @@ module mul #(
   logic [WIDTH+2:0] multiplier_ext;
 
   logic [2*WIDTH-1:0] pp_out[WIDTH/2:0];  // 8 + 1 extra in case is unsigned
+  logic [2*WIDTH-1:0] pp_out_d[WIDTH/2:0];  // 8 + 1 extra in case is unsigned
   logic p[WIDTH/2:0];
   logic s[WIDTH/2:0];
   logic unsign_i;
 
   logic [2*WIDTH-1:0] correction_factor_0;
-  logic [2*WIDTH-1:0] correction_factor_1;
   logic [2*WIDTH-1:0] correction_factor;
   logic [2*WIDTH-1:0] sum;
-
 
   assign multiplicand_ext        = {~unsign_i & a[WIDTH-1], a[WIDTH-1:0]};
   assign multiplicand_2x_ext     = {a[WIDTH-1:0], 1'b0};
@@ -122,6 +122,22 @@ module mul #(
     end
   endgenerate
 
+  generate
+    if (PIPE_STAGE_AFTER_BOOTH) begin
+      for (i = 0; i <= WIDTH / 2; i = i + 1) begin : gen_pp_out_dff
+        register #(2 * WIDTH) pp_out_dff_inst (
+            .clk (clk),
+            .din (pp_out[i]),
+            .dout(pp_out_d[i])
+        );
+      end
+    end else begin
+      for (i = 0; i <= WIDTH / 2; i = i + 1) begin : gen_pp_out_dff
+        assign pp_out_d[i] = pp_out[i];
+      end
+    end
+  endgenerate
+
   assign correction_factor_0 = (unsign_i) ?  pp_out[WIDTH/2] | {{WIDTH+1{1'b0}}, s[WIDTH/2-1], {WIDTH-2{1'b0}}} : {{WIDTH+1{1'b0}}, s[WIDTH/2-1], {WIDTH-2{1'b0}}};
 
   localparam NUM_LAYERS = 1 + $clog2(WIDTH / 2 / 4);
@@ -139,10 +155,10 @@ module mul #(
           csa_4_2 #(
               .WIDTH(2 * WIDTH)
           ) csa_4_2_inst (
-              .in0(pp_out[4*lr]),
-              .in1(pp_out[4*lr+1]),
-              .in2(pp_out[4*lr+2]),
-              .in3(pp_out[4*lr+3]),  // Fast input, goes only through the 3-2 compressor
+              .in0(pp_out_d[4*lr]),
+              .in1(pp_out_d[4*lr+1]),
+              .in2(pp_out_d[4*lr+2]),
+              .in3(pp_out_d[4*lr+3]),  // Fast input, goes only through the 3-2 compressor
               .sum(pp_sum_d[2*WIDTH-1:0]),  // Fast, only XORs are needed
               .carry(pp_carry_d[2*WIDTH-1:0])  // Slow, AND and OR are needed
           );
@@ -191,17 +207,23 @@ module mul #(
   logic [2*WIDTH-1:0] pp_carry_correction;
 
   generate
-    if (PIPE_STAGE_CSA_LR1) begin
-      register #(2 * WIDTH) correction_factor_dff_inst (
-          .clk (clk),
-          .din (correction_factor_0),
-          .dout(correction_factor_1)
-      );
-      assign correction_factor = correction_factor_1;
+    if (PIPE_STAGE_CSA_LR1 + PIPE_STAGE_AFTER_BOOTH == 0) begin
+      assign correction_factor = correction_factor_0;
     end else begin
-      assign correction_factor   = correction_factor_0;
-      //assign correction_factor_1 = correction_factor_0;
+      logic [2*WIDTH-1:0] correction_factor_d[PIPE_STAGE_CSA_LR1 + PIPE_STAGE_AFTER_BOOTH:0];
+      assign correction_factor_d[0] = correction_factor_0;
+      for (
+          i = 0; i < PIPE_STAGE_CSA_LR1 + PIPE_STAGE_AFTER_BOOTH; i = i + 1
+      ) begin : gen_correction_factor_dff
+        register #(2 * WIDTH) correction_factor_dff_inst (
+            .clk (clk),
+            .din (correction_factor_d[i]),
+            .dout(correction_factor_d[i+1])
+        );
+      end
+      assign correction_factor = correction_factor_d[PIPE_STAGE_CSA_LR1+PIPE_STAGE_AFTER_BOOTH];
     end
+
   endgenerate
 
 
