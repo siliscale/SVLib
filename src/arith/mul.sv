@@ -36,7 +36,7 @@
 //          \/____/         
 ///////////////////////////////////////////////////////////////////////////////
 
-module mul_16x16 #(
+module mul #(
     parameter integer WIDTH = 16
 ) (
     input  logic [WIDTH-1:0] a,
