@@ -40,7 +40,10 @@ module mul #(
     parameter integer WIDTH = 8,
     parameter integer CPA_ALGORITHM = 1,  // 0: RCA, 1: CLA
     parameter integer PIPE_STAGE_AFTER_BOOTH = 1,  // Enable Flop stage after Booth encoder
-    parameter integer PIPE_STAGE_CSA_LR1 = 1  // Enable Flop stage after first layer of CSAs
+    parameter integer PIPE_STAGE_CSA_LR1 = 0,  // Enable Flop stage after first layer of CSAs
+    parameter integer PIPE_STAGE_CSA_LR2 = 0,  // Enable Flop stage after second layer of CSAs
+    parameter integer PIPE_STAGE_CSA_LR3 = 0,  // Enable Flop stage after third layer of CSAs
+    parameter integer PIPE_STAGE_CSA_LR4 = 0  // Enable Flop stage after fourth layer of CSAs
 ) (
     input logic clk,
 
@@ -59,23 +62,20 @@ module mul #(
   logic [WIDTH+2:0] multiplier_ext;
 
   logic [2*WIDTH-1:0] pp_out[WIDTH/2:0];  // 8 + 1 extra in case is unsigned
-  logic [2*WIDTH-1:0] pp_out_d[WIDTH/2:0];  // 8 + 1 extra in case is unsigned
-  logic p[WIDTH/2:0];
-  logic s[WIDTH/2:0];
+  logic [WIDTH/2:0] p;
+  logic [WIDTH/2:0] s;
   logic unsign_i;
 
-  logic [2*WIDTH-1:0] correction_factor_0;
-  logic [2*WIDTH-1:0] correction_factor;
+
   logic [2*WIDTH-1:0] sum;
 
-  assign multiplicand_ext        = {~unsign_i & a[WIDTH-1], a[WIDTH-1:0]};
+  assign multiplicand_ext        = {~unsign & a[WIDTH-1], a[WIDTH-1:0]};
   assign multiplicand_2x_ext     = {a[WIDTH-1:0], 1'b0};
-  assign multiplicand_neg_ext    = {~(~unsign_i & a[WIDTH-1]), ~a[WIDTH-1:0]};
+  assign multiplicand_neg_ext    = {~(~unsign & a[WIDTH-1]), ~a[WIDTH-1:0]};
   assign multiplicand_neg_2x_ext = {~a[WIDTH-1:0], 1'b1};
 
   assign multiplier_ext          = {2'b0, b[WIDTH-1:0], 1'b0};
 
-  assign unsign_i                = unsign;
 
   logic [2*WIDTH-1:0] pp_sum_final;
   logic [2*WIDTH-1:0] pp_carry_final;
@@ -87,9 +87,11 @@ module mul #(
 
       if (i == 0) begin
         booth_encoder #(
-            .WIDTH(WIDTH)
+            .WIDTH(WIDTH),
+            .PIPE_STAGE(PIPE_STAGE_AFTER_BOOTH)
         ) booth_encoder_inst (
-            .unsign             (unsign_i),
+            .clk                (clk),
+            .unsign             (unsign),
             .multiplier         (multiplier_ext[2:0]),
             .multiplicand       (multiplicand_ext),
             .multiplicand_2x    (multiplicand_2x_ext),
@@ -104,9 +106,11 @@ module mul #(
         };
       end else begin
         booth_encoder #(
-            .WIDTH(WIDTH)
+            .WIDTH(WIDTH),
+            .PIPE_STAGE(PIPE_STAGE_AFTER_BOOTH)
         ) booth_encoder_inst (
-            .unsign             (unsign_i),
+            .clk                (clk),
+            .unsign             (unsign),
             .multiplier         (multiplier_ext[2*i+2:2*i]),
             .multiplicand       (multiplicand_ext),
             .multiplicand_2x    (multiplicand_2x_ext),
@@ -123,129 +127,267 @@ module mul #(
   endgenerate
 
   generate
-    if (PIPE_STAGE_AFTER_BOOTH) begin
-      for (i = 0; i <= WIDTH / 2; i = i + 1) begin : gen_pp_out_dff
-        register #(2 * WIDTH) pp_out_dff_inst (
-            .clk (clk),
-            .din (pp_out[i]),
-            .dout(pp_out_d[i])
-        );
-      end
+    if (PIPE_STAGE_AFTER_BOOTH) begin : gen_flops_unsign
+      register #(1) unsign_dff_inst (
+          .clk (clk),
+          .din (unsign),
+          .dout(unsign_i)
+      );
     end else begin
-      for (i = 0; i <= WIDTH / 2; i = i + 1) begin : gen_pp_out_dff
-        assign pp_out_d[i] = pp_out[i];
-      end
+      assign unsign_i = unsign;
     end
   endgenerate
 
-  assign correction_factor_0 = (unsign_i) ?  pp_out[WIDTH/2] | {{WIDTH+1{1'b0}}, s[WIDTH/2-1], {WIDTH-2{1'b0}}} : {{WIDTH+1{1'b0}}, s[WIDTH/2-1], {WIDTH-2{1'b0}}};
+  localparam NUM_LAYERS = $clog2(WIDTH / 2 / 4);
+  logic [2*WIDTH-1:0] cf[NUM_LAYERS+1:0];
 
-  localparam NUM_LAYERS = 1 + $clog2(WIDTH / 2 / 4);
-  logic [2*WIDTH-1:0] pp_sum  [NUM_LAYERS-1:0][WIDTH / 2 / 4-1:0];
-  logic [2*WIDTH-1:0] pp_carry[NUM_LAYERS-1:0][WIDTH / 2 / 4-1:0];
+  assign cf[0] = (unsign_i) ?  pp_out[WIDTH/2] | {{WIDTH+1{1'b0}}, s[WIDTH/2-1], {WIDTH-2{1'b0}}} : {{WIDTH+1{1'b0}}, s[WIDTH/2-1], {WIDTH-2{1'b0}}};
 
-  genvar layer;
-  generate
-    for (layer = 0; layer < NUM_LAYERS; layer = layer + 1) begin : gen_layer
-      if (layer == 0) begin : gen_layer_0
-        for (genvar lr = 0; lr < WIDTH / 2 / 4; lr = lr + 1) begin : gen_lr
-          logic [2*WIDTH-1:0] pp_sum_d;
-          logic [2*WIDTH-1:0] pp_carry_d;
-
-          csa_4_2 #(
-              .WIDTH(2 * WIDTH)
-          ) csa_4_2_inst (
-              .in0(pp_out_d[4*lr]),
-              .in1(pp_out_d[4*lr+1]),
-              .in2(pp_out_d[4*lr+2]),
-              .in3(pp_out_d[4*lr+3]),  // Fast input, goes only through the 3-2 compressor
-              .sum(pp_sum_d[2*WIDTH-1:0]),  // Fast, only XORs are needed
-              .carry(pp_carry_d[2*WIDTH-1:0])  // Slow, AND and OR are needed
-          );
-
-          if (PIPE_STAGE_CSA_LR1) begin
-            register #(2 * WIDTH) pp_sum_dff_inst (
-                .clk (clk),
-                .din (pp_sum_d[2*WIDTH-1:0]),
-                .dout(pp_sum[layer][lr][2*WIDTH-1:0])
-            );
-
-            register #(2 * WIDTH) pp_carry_dff_inst (
-                .clk (clk),
-                .din (pp_carry_d[2*WIDTH-1:0]),
-                .dout(pp_carry[layer][lr][2*WIDTH-1:0])
-            );
-          end else begin
-            assign pp_sum[layer][lr][2*WIDTH-1:0]   = pp_sum_d[2*WIDTH-1:0];
-            assign pp_carry[layer][lr][2*WIDTH-1:0] = pp_carry_d[2*WIDTH-1:0];
-          end
-        end
-
-      end else begin : gen_layer_1
-        for (genvar lr = 0; lr < WIDTH / 2 / 4 / (2 ** layer); lr = lr + 1) begin : gen_lr
-          csa_4_2 #(
-              .WIDTH(2 * WIDTH)
-          ) csa_4_2_inst (
-              .in0(pp_sum[layer-1][2*lr]),
-              .in1({pp_carry[layer-1][2*lr][2*WIDTH-2:0], 1'b0}),
-              .in2(pp_sum[layer-1][2*lr+1]),
-              .in3({
-                pp_carry[layer-1][2*lr+1][2*WIDTH-2:0], 1'b0
-              }),  // Fast input, goes only through the 3-2 compressor
-              .sum(pp_sum[layer][lr]),  // Fast, only XORs are needed
-              .carry(pp_carry[layer][lr])  // Slow, AND and OR are needed
-          );
-        end
-      end
-    end
-  endgenerate
-
-  assign pp_sum_final   = pp_sum[NUM_LAYERS-1][0];
-  assign pp_carry_final = pp_carry[NUM_LAYERS-1][0];
-
-  logic [2*WIDTH-1:0] pp_sum_correction;
-  logic [2*WIDTH-1:0] pp_carry_correction;
+  /* ***** LAYER 0 of CSAs ***** */
+  logic [2*WIDTH-1:0] pp_sum_lr0[(WIDTH / 2 / 4)-1:0];
+  logic [2*WIDTH-1:0] pp_carry_lr0[(WIDTH / 2 / 4)-1:0];
+  logic [2*WIDTH-1:0] pp_sum_lr0_i[(WIDTH / 2 / 4)-1:0];
+  logic [2*WIDTH-1:0] pp_carry_lr0_i[(WIDTH / 2 / 4)-1:0];
 
   generate
-    if (PIPE_STAGE_CSA_LR1 + PIPE_STAGE_AFTER_BOOTH == 0) begin
-      assign correction_factor = correction_factor_0;
-    end else begin
-      logic [2*WIDTH-1:0] correction_factor_d[PIPE_STAGE_CSA_LR1 + PIPE_STAGE_AFTER_BOOTH:0];
-      assign correction_factor_d[0] = correction_factor_0;
-      for (
-          i = 0; i < PIPE_STAGE_CSA_LR1 + PIPE_STAGE_AFTER_BOOTH; i = i + 1
-      ) begin : gen_correction_factor_dff
-        register #(2 * WIDTH) correction_factor_dff_inst (
-            .clk (clk),
-            .din (correction_factor_d[i]),
-            .dout(correction_factor_d[i+1])
+    if (WIDTH >= 8) begin : gen_layer_0
+      for (i = 0; i < WIDTH / 2 / 4; i = i + 1) begin : gen_layer_0_csa
+        csa_4_2 #(
+            .WIDTH(2 * WIDTH)
+        ) csa_4_2_inst (
+            .in0  (pp_out[4*i]),
+            .in1  (pp_out[4*i+1]),
+            .in2  (pp_out[4*i+2]),
+            .in3  (pp_out[4*i+3]),
+            .sum  (pp_sum_lr0_i[i]),
+            .carry(pp_carry_lr0_i[i])
         );
       end
-      assign correction_factor = correction_factor_d[PIPE_STAGE_CSA_LR1+PIPE_STAGE_AFTER_BOOTH];
     end
-
   endgenerate
 
+  generate
+    for (i = 0; i < WIDTH / 2 / 4; i = i + 1) begin : gen_flops_layer_0_csa
+      if (PIPE_STAGE_CSA_LR1 & WIDTH >= 8) begin : gen_flops_layer_0_csa
+        register #(2 * WIDTH) pp_sum_lr0_dff_inst (
+            .clk (clk),
+            .din (pp_sum_lr0_i[i]),
+            .dout(pp_sum_lr0[i])
+        );
+        register #(2 * WIDTH) pp_carry_lr0_dff_inst (
+            .clk (clk),
+            .din (pp_carry_lr0_i[i]),
+            .dout(pp_carry_lr0[i])
+        );
+        register #(2 * WIDTH) cf_dff_inst (
+            .clk (clk),
+            .din (cf[0]),
+            .dout(cf[1])
+        );
+      end else begin
+        assign pp_sum_lr0[i]   = pp_sum_lr0_i[i];
+        assign pp_carry_lr0[i] = pp_carry_lr0_i[i];
+        assign cf[1]           = cf[0];
+      end
+    end
+  endgenerate
+
+  /* ***** LAYER 1 of CSAs ***** */
+  logic [2*WIDTH-1:0] pp_sum_lr1[(WIDTH / 2 / 4/2)-1:0];
+  logic [2*WIDTH-1:0] pp_carry_lr1[(WIDTH / 2 / 4/2)-1:0];
+  logic [2*WIDTH-1:0] pp_sum_lr1_i[(WIDTH / 2 / 4/2)-1:0];
+  logic [2*WIDTH-1:0] pp_carry_lr1_i[(WIDTH / 2 / 4/2)-1:0];
+
+  generate
+    if (WIDTH >= 16) begin : gen_layer_1
+      for (i = 0; i < WIDTH / 2 / 4 / 2; i = i + 1) begin : gen_layer_1_csa
+        csa_4_2 #(
+            .WIDTH(2 * WIDTH)
+        ) csa_4_2_inst (
+            .in0  (pp_sum_lr0[2*i]),
+            .in1  (pp_sum_lr0[2*i+1]),
+            .in2  ({pp_carry_lr0[2*i][2*WIDTH-2:0], 1'b0}),
+            .in3  ({pp_carry_lr0[2*i+1][2*WIDTH-2:0], 1'b0}),
+            .sum  (pp_sum_lr1_i[i]),
+            .carry(pp_carry_lr1_i[i])
+        );
+      end
+    end
+  endgenerate
+
+  generate
+    for (i = 0; i < WIDTH / 2 / 4; i = i + 1) begin : gen_flops_layer_1_csa
+      if (PIPE_STAGE_CSA_LR2 & WIDTH >= 16) begin : gen_flops_layer_1_csa
+        register #(2 * WIDTH) pp_sum_lr1_dff_inst (
+            .clk (clk),
+            .din (pp_sum_lr1_i[i]),
+            .dout(pp_sum_lr1[i])
+        );
+        register #(2 * WIDTH) pp_carry_lr1_dff_inst (
+            .clk (clk),
+            .din (pp_carry_lr1_i[i]),
+            .dout(pp_carry_lr1[i])
+        );
+        register #(2 * WIDTH) cf_dff_inst (
+            .clk (clk),
+            .din (cf[1]),
+            .dout(cf[2])
+        );
+      end else begin
+        assign pp_sum_lr1[i]   = pp_sum_lr1_i[i];
+        assign pp_carry_lr1[i] = pp_carry_lr1_i[i];
+        assign cf[2]           = cf[1];
+      end
+    end
+  endgenerate
+
+  /* ***** LAYER 2 of CSAs ***** */
+  logic [2*WIDTH-1:0] pp_sum_lr2[(WIDTH / 2 / 4 / 2 / 2)-1:0];
+  logic [2*WIDTH-1:0] pp_carry_lr2[(WIDTH / 2 / 4 / 2 / 2)-1:0];
+  logic [2*WIDTH-1:0] pp_sum_lr2_i[(WIDTH / 2 / 4 / 2 / 2)-1:0];
+  logic [2*WIDTH-1:0] pp_carry_lr2_i[(WIDTH / 2 / 4 / 2 / 2)-1:0];
+
+  generate
+    if (WIDTH >= 32) begin : gen_layer_2
+      for (i = 0; i < WIDTH / 2 / 4 / 2 / 2; i = i + 1) begin : gen_layer_2_csa
+        csa_4_2 #(
+            .WIDTH(2 * WIDTH)
+        ) csa_4_2_inst (
+            .in0  (pp_sum_lr1[2*i]),
+            .in1  (pp_sum_lr1[2*i+1]),
+            .in2  ({pp_carry_lr1[2*i][2*WIDTH-2:0], 1'b0}),
+            .in3  ({pp_carry_lr1[2*i+1][2*WIDTH-2:0], 1'b0}),
+            .sum  (pp_sum_lr2_i[i]),
+            .carry(pp_carry_lr2_i[i])
+        );
+      end
+    end
+  endgenerate
+
+  generate
+    for (i = 0; i < WIDTH / 2 / 4 / 2; i = i + 1) begin : gen_flops_layer_2_csa
+      if (PIPE_STAGE_CSA_LR3 & WIDTH >= 32) begin : gen_flops_layer_2_csa
+        register #(2 * WIDTH) pp_sum_lr2_dff_inst (
+            .clk (clk),
+            .din (pp_sum_lr2_i[i]),
+            .dout(pp_sum_lr2[i])
+        );
+        register #(2 * WIDTH) pp_carry_lr2_dff_inst (
+            .clk (clk),
+            .din (pp_carry_lr2_i[i]),
+            .dout(pp_carry_lr2[i])
+        );
+        register #(2 * WIDTH) cf_dff_inst (
+            .clk (clk),
+            .din (cf[2]),
+            .dout(cf[3])
+        );
+      end else begin
+        assign pp_sum_lr2[i]   = pp_sum_lr2_i[i];
+        assign pp_carry_lr2[i] = pp_carry_lr2_i[i];
+        assign cf[3]           = cf[2];
+      end
+    end
+  endgenerate
+
+  /* ***** LAYER 3 of CSAs ***** */
+  logic [2*WIDTH-1:0] pp_sum_lr3[(WIDTH / 2 / 4 / 2 / 2 / 2)-1:0];
+  logic [2*WIDTH-1:0] pp_carry_lr3[(WIDTH / 2 / 4 / 2 / 2 / 2)-1:0];
+  logic [2*WIDTH-1:0] pp_sum_lr3_i[(WIDTH / 2 / 4 / 2 / 2 / 2)-1:0];
+  logic [2*WIDTH-1:0] pp_carry_lr3_i[(WIDTH / 2 / 4 / 2 / 2 / 2)-1:0];
+
+  generate
+    if (WIDTH >= 64) begin : gen_layer_3
+      for (i = 0; i < WIDTH / 2 / 4 / 2 / 2 / 2; i = i + 1) begin : gen_layer_3_csa
+        csa_4_2 #(
+            .WIDTH(2 * WIDTH)
+        ) csa_4_2_inst (
+            .in0  (pp_sum_lr2[2*i]),
+            .in1  (pp_sum_lr2[2*i+1]),
+            .in2  ({pp_carry_lr2[2*i][2*WIDTH-2:0], 1'b0}),
+            .in3  ({pp_carry_lr2[2*i+1][2*WIDTH-2:0], 1'b0}),
+            .sum  (pp_sum_lr3_i[i]),
+            .carry(pp_carry_lr3_i[i])
+        );
+      end
+    end
+  endgenerate
+
+  generate
+    for (i = 0; i < WIDTH / 2 / 4 / 2 / 2; i = i + 1) begin : gen_flops_layer_3_csa
+      if (PIPE_STAGE_CSA_LR4 & WIDTH >= 64) begin : gen_flops_layer_3_csa
+        register #(2 * WIDTH) pp_sum_lr3_dff_inst (
+            .clk (clk),
+            .din (pp_sum_lr3_i[i]),
+            .dout(pp_sum_lr3[i])
+        );
+        register #(2 * WIDTH) pp_carry_lr3_dff_inst (
+            .clk (clk),
+            .din (pp_carry_lr3_i[i]),
+            .dout(pp_carry_lr3[i])
+        );
+        register #(2 * WIDTH) cf_dff_inst (
+            .clk (clk),
+            .din (cf[3]),
+            .dout(cf[4])
+        );
+      end else begin
+        assign pp_sum_lr3[i]   = pp_sum_lr3_i[i];
+        assign pp_carry_lr3[i] = pp_carry_lr3_i[i];
+        assign cf[4]           = cf[3];
+      end
+    end
+  endgenerate
+  
+
+  /* ***** Select the proper output Layer ***** */
+  logic [2*WIDTH-1:0] pp_sum_final;
+  logic [2*WIDTH-1:0] pp_carry_final;
+  logic [2*WIDTH-1:0] cf_final;
+  generate
+    if (WIDTH == 8) begin : gen_layer_0_sel
+      assign pp_sum_final   = pp_sum_lr0[0];
+      assign pp_carry_final = pp_carry_lr0[0];
+      assign cf_final       = cf[1];
+    end else if (WIDTH == 16) begin : gen_layer_1_sel
+      assign pp_sum_final   = pp_sum_lr1[0];
+      assign pp_carry_final = pp_carry_lr1[0];
+      assign cf_final       = cf[2];
+    end else if (WIDTH == 32) begin : gen_layer_2_sel
+      assign pp_sum_final   = pp_sum_lr2[0];
+      assign pp_carry_final = pp_carry_lr2[0];
+      assign cf_final       = cf[3];
+    end else if (WIDTH == 64) begin : gen_layer_3_sel
+      assign pp_sum_final   = pp_sum_lr3[0];
+      assign pp_carry_final = pp_carry_lr3[0];
+      assign cf_final       = cf[4];
+    end
+  endgenerate
+
+  /* ***** Correction Factor 3:2 Compressor ***** */
+  logic [2*WIDTH-1:0] cf_sum_i;
+  logic [2*WIDTH-1:0] cf_carry_i;
 
   csa_3_2 #(
       .WIDTH(2 * WIDTH)
   ) csa_3_2_inst (
-      .in0  (pp_sum_final),
-      .in1  ({pp_carry_final[2*WIDTH-2:0], 1'b0}),
-      .in2  (correction_factor),
-      .sum  (pp_sum_correction),
-      .carry(pp_carry_correction)
+      .in0  (cf_final),
+      .in1  (pp_sum_final),
+      .in2  ({pp_carry_final[2*WIDTH-2:0], 1'b0}),
+      .sum  (cf_sum_i),
+      .carry(cf_carry_i)
   );
 
-  /* Carry-Propagate Adder */
+  /* Final Carry-Propagate Adder */
   adder #(
       .WIDTH    (2 * WIDTH),
       .ALGORITHM(CPA_ALGORITHM)
   ) adder_inst (
-      .in0(pp_sum_correction),
-      .in1({pp_carry_correction[2*WIDTH-2:0], 1'b0}),
+      .in0(cf_sum_i),
+      .in1({cf_carry_i[2*WIDTH-2:0], 1'b0}),
       .sum(sum)
   );
+
   assign lower = sum[WIDTH-1:0];
   assign upper = sum[2*WIDTH-1:WIDTH];
 
