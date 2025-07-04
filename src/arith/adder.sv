@@ -4,6 +4,7 @@ module adder #(
 ) (
     input  logic [WIDTH-1:0] in0,
     input  logic [WIDTH-1:0] in1,
+    input  logic             cin,
     output logic [  WIDTH:0] sum
 );
 
@@ -14,9 +15,10 @@ module adder #(
 
       for (genvar i = 0; i < WIDTH; i = i + 1) begin
         if (i == 0) begin
-          ha ha_inst (
+          full_adder fa_inst (
               .a   (in0[i]),
               .b   (in1[i]),
+              .cin (cin),
               .sum (sum_i[i]),
               .cout(carry_i[i])
           );
@@ -50,7 +52,7 @@ module adder #(
           cla_4 cla_4_inst (
               .in0 (in0_i[i]),
               .in1 (in1_i[i]),
-              .cin (1'b0),
+              .cin (cin),
               .sum (sum_i[i]),
               .cout(carry_i[i])
           );

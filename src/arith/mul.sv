@@ -43,7 +43,8 @@ module mul #(
     parameter integer PIPE_STAGE_CSA_LR1 = 0,  // Enable Flop stage after first layer of CSAs
     parameter integer PIPE_STAGE_CSA_LR2 = 0,  // Enable Flop stage after second layer of CSAs
     parameter integer PIPE_STAGE_CSA_LR3 = 0,  // Enable Flop stage after third layer of CSAs
-    parameter integer PIPE_STAGE_CSA_LR4 = 0  // Enable Flop stage after fourth layer of CSAs
+    parameter integer PIPE_STAGE_CSA_LR4 = 0,  // Enable Flop stage after fourth layer of CSAs
+    parameter integer PIPE_STAGES_CPA = 0  // Number of flop stages to break up CPA
 ) (
     input logic clk,
 
@@ -338,7 +339,7 @@ module mul #(
       end
     end
   endgenerate
-  
+
 
   /* ***** Select the proper output Layer ***** */
   logic [2*WIDTH-1:0] pp_sum_final;
@@ -379,14 +380,76 @@ module mul #(
   );
 
   /* Final Carry-Propagate Adder */
-  adder #(
-      .WIDTH    (2 * WIDTH),
-      .ALGORITHM(CPA_ALGORITHM)
-  ) adder_inst (
-      .in0(cf_sum_i),
-      .in1({cf_carry_i[2*WIDTH-2:0], 1'b0}),
-      .sum(sum)
-  );
+  localparam integer CPA_WIDTH = 2 * WIDTH / (PIPE_STAGES_CPA + 1);
+  logic [2*WIDTH-1:0] cf_carry_i_ext;
+  assign cf_carry_i_ext = {cf_carry_i[2*WIDTH-2:0], 1'b0};
+
+  generate
+    if (PIPE_STAGES_CPA == 1) begin : gen_cpa
+      logic [    CPA_WIDTH-1:0] sum_out_first_adder     [PIPE_STAGES_CPA:0];
+      logic [PIPE_STAGES_CPA:0] carry_out_first_adder;
+
+      logic [    CPA_WIDTH-1:0] cf_sum_i_second_adder;
+      logic [    CPA_WIDTH-1:0] cf_carry_i_second_adder;
+
+      logic [    CPA_WIDTH-1:0] sum_out_second_adder;
+      logic                     carry_out_second_adder;
+
+      /* First Adder */
+      adder #(
+          .WIDTH    (CPA_WIDTH),
+          .ALGORITHM(CPA_ALGORITHM)
+      ) adder1_inst (
+          .in0(cf_sum_i[CPA_WIDTH-1:0]),
+          .in1(cf_carry_i_ext[CPA_WIDTH-1:0]),
+          .cin(1'b0),
+          .sum({carry_out_first_adder[0], sum_out_first_adder[0]})
+      );
+      register #(CPA_WIDTH) sum_out_first_adder_dff_inst (
+          .clk (clk),
+          .din (sum_out_first_adder[0]),
+          .dout(sum_out_first_adder[1])
+      );
+      register #(1) carry_out_first_adder_dff_inst (
+          .clk (clk),
+          .din (carry_out_first_adder[0]),
+          .dout(carry_out_first_adder[1])
+      );
+      assign sum[CPA_WIDTH-1:0] = sum_out_first_adder[1];
+
+      /* Second Adder */
+      register #(CPA_WIDTH) cf_sum_i_second_adder_dff_inst (
+          .clk (clk),
+          .din (cf_sum_i[2*CPA_WIDTH-1:CPA_WIDTH]),
+          .dout(cf_sum_i_second_adder)
+      );
+      register #(CPA_WIDTH) cf_carry_i_second_adder_dff_inst (
+          .clk (clk),
+          .din (cf_carry_i_ext[2*CPA_WIDTH-1:CPA_WIDTH]),
+          .dout(cf_carry_i_second_adder)
+      );
+      adder #(
+          .WIDTH    (CPA_WIDTH),
+          .ALGORITHM(CPA_ALGORITHM)
+      ) adder2_inst (
+          .in0(cf_sum_i_second_adder),
+          .in1(cf_carry_i_second_adder),
+          .cin(carry_out_first_adder[1]),
+          .sum({carry_out_second_adder, sum_out_second_adder})
+      );
+      assign sum[2*CPA_WIDTH-1:CPA_WIDTH] = sum_out_second_adder;
+    end else begin
+      adder #(
+          .WIDTH    (2 * WIDTH),
+          .ALGORITHM(CPA_ALGORITHM)
+      ) adder_inst (
+          .in0(cf_sum_i),
+          .in1(cf_carry_i_ext),
+          .cin(1'b0),
+          .sum(sum)
+      );
+    end
+  endgenerate
 
   assign lower = sum[WIDTH-1:0];
   assign upper = sum[2*WIDTH-1:WIDTH];
