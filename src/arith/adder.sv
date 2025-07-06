@@ -5,7 +5,8 @@ module adder #(
     input  logic [WIDTH-1:0] in0,
     input  logic [WIDTH-1:0] in1,
     input  logic             cin,
-    output logic [  WIDTH:0] sum
+    output logic [WIDTH-1:0] sum,
+    output logic             cout
 );
 
   generate
@@ -32,7 +33,8 @@ module adder #(
           );
         end
       end
-      assign sum = sum_i;
+      assign sum  = sum_i;
+      assign cout = carry_i[WIDTH];
     end else if (ALGORITHM == 1) begin  /* Carry-Look-Ahead Adder */
       localparam integer CLA_WIDTH = 4;
       localparam integer CLA_COUNT = WIDTH / CLA_WIDTH;
@@ -67,7 +69,7 @@ module adder #(
         end
         assign sum[CLA_WIDTH*(i+1)-1:CLA_WIDTH*i] = sum_i[i];
       end
-      assign sum[WIDTH] = carry_i[CLA_COUNT-1];
+      assign cout = carry_i[CLA_COUNT-1];
     end
   endgenerate
 endmodule
